@@ -1,0 +1,9 @@
+{
+  "name": "sentence-ladder",
+  "version": "1.0.0",
+  "private": true,
+  "description": "문장 사다리 — 우리말 생각을 번역하지 않고 영어 어순 구문으로 나눠 직접 영어 문장을 세우는 AI 코치",
+  "engines": {
+    "node": ">=18"
+  }
+}

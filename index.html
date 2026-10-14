@@ -1,0 +1,613 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="description" content="우리말로 쓴 생각을 번역하지 않고, 영어 어순 구문으로 나눠 한 칸씩 직접 영어 문장을 세우는 AI 코치">
+<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>문장 사다리</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap">
+<style>
+/* Layout: coach chat on the left; on the right the student's Korean intent split into idea cards, the ladder for the current idea, and the English text that grows from the student's own sentences */
+:root{
+  --paper:#EEF2EF; --surface:#FFFFFF; --sunk:#F5F8F6; --ink:#15261F; --muted:#56675F; --line:#D3DDD7;
+  --accent:#0E7A5F; --accent-ink:#FFFFFF; --accent-soft:#DDF0E8;
+  --qa:#2C55C9; --qa-soft:#E3E9FB;
+  --bot:#F3F6F4; --me:#15261F; --me-ink:#F2F7F4;
+  --mark:#FFE47A; --mark-ink:#3A3000;
+  --bad:#B8382C; --warn:#9A6400; --warn-soft:#FFF1D6;
+  --f-display:"Bricolage Grotesque","IBM Plex Sans KR",system-ui,sans-serif;
+  --f-body:"IBM Plex Sans KR","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
+  --f-sent:"Newsreader",Georgia,"Times New Roman",serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --paper:#0E1513; --surface:#16211D; --sunk:#121B18; --ink:#E4EEE9; --muted:#97A9A0; --line:#2A3833;
+  --accent:#5ED1AE; --accent-ink:#0E1513; --accent-soft:#173A30;
+  --qa:#8FA9FF; --qa-soft:#1E2A4C;
+  --bot:#1B2823; --me:#DCEAE3; --me-ink:#0E1513;
+  --mark:#5A4C10; --mark-ink:#FFF1B8;
+  --bad:#FF8B7E; --warn:#F2B654; --warn-soft:#3A2D12; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --paper:#0E1513; --surface:#16211D; --sunk:#121B18; --ink:#E4EEE9; --muted:#97A9A0; --line:#2A3833;
+  --accent:#5ED1AE; --accent-ink:#0E1513; --accent-soft:#173A30;
+  --qa:#8FA9FF; --qa-soft:#1E2A4C;
+  --bot:#1B2823; --me:#DCEAE3; --me-ink:#0E1513;
+  --mark:#5A4C10; --mark-ink:#FFF1B8;
+  --bad:#FF8B7E; --warn:#F2B654; --warn-soft:#3A2D12; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--paper);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.6;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 40px}
+.wrap{max-width:1200px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+button,input,textarea,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.label{font-family:var(--f-mono);font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:7px 16px;font-weight:600}
+.btn:hover{border-color:var(--ink)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn.sm{padding:4px 12px;font-size:13px}
+
+header{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:14px}
+h1{font-family:var(--f-display);font-weight:800;font-size:clamp(30px,5vw,44px);line-height:1;margin:0;letter-spacing:-.02em}
+h1 .r{color:var(--accent)}
+header p{margin:6px 0 0;color:var(--muted);max-width:60ch}
+.rule{display:flex;gap:8px;flex-wrap:wrap}
+.rule span{font-size:12.5px;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:3px 10px}
+
+.grid{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:18px;align-items:start}
+@media (max-width:880px){.grid{grid-template-columns:1fr}}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;min-width:0}
+
+/* chat */
+.chat{display:flex;flex-direction:column;height:min(82vh,800px);min-height:560px}
+.chat-head{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.chat-head h2{font-family:var(--f-display);font-weight:600;font-size:18px;margin:0;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.topic-tag{font-family:var(--f-body);font-size:13px;font-weight:600;background:var(--accent-soft);color:var(--accent);border-radius:999px;padding:2px 10px}
+.log{flex:1;overflow-y:auto;padding:18px;display:flex;flex-direction:column;gap:14px}
+.msg{display:flex;flex-direction:column;gap:6px;max-width:88%}
+.msg.me{align-self:flex-end;align-items:flex-end}
+.bubble{border-radius:14px;padding:10px 14px;overflow-wrap:anywhere}
+.msg.bot .bubble{background:var(--bot);border-top-left-radius:4px}
+.msg.me .bubble{background:var(--me);color:var(--me-ink);border-top-right-radius:4px;font-family:var(--f-sent);font-size:19px;line-height:1.4}
+.msg.me .bubble.hintreq{font-family:var(--f-body);font-size:13.5px}
+.msg.guard .bubble{background:var(--warn-soft);color:var(--ink);border:1px solid var(--warn)}
+.msg.unit .bubble{background:var(--surface);border:1.5px solid var(--accent)}
+.unit-ko{font-size:17px;font-weight:600;margin:2px 0 6px}
+.who{font-family:var(--f-mono);font-size:11px;color:var(--muted);display:flex;gap:6px;align-items:center}
+.kind{font-weight:600;border-radius:4px;padding:0 5px;font-size:10.5px;background:var(--accent-soft);color:var(--accent)}
+.kind.Q{background:var(--qa-soft);color:var(--qa)}
+.ok-badge{display:inline-block;font-size:12px;font-weight:600;background:var(--accent-soft);color:var(--accent);border-radius:999px;padding:1px 9px;margin-bottom:4px}
+.issues{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
+.issues li{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:14px}
+.issues .frag{font-family:var(--f-sent);font-size:17px;text-decoration:underline wavy var(--bad);text-underline-offset:4px;margin-right:6px}
+.frame{margin-top:8px;font-family:var(--f-sent);font-size:18px;background:var(--surface);border:1px dashed var(--accent);border-radius:8px;padding:8px 12px}
+.frame .label{display:block;font-size:10.5px}
+.opts{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.opt{border:1px solid var(--accent);color:var(--accent);background:transparent;border-radius:999px;padding:2px 12px;font-family:var(--f-sent);font-size:16px}
+.opt:hover{background:var(--accent-soft)}
+.typing{display:flex;gap:4px;padding:6px 2px}
+.typing i{width:7px;height:7px;border-radius:50%;background:var(--accent);animation:b 1s infinite}
+.typing i:nth-child(2){animation-delay:.15s}.typing i:nth-child(3){animation-delay:.3s}
+@keyframes b{0%,80%,100%{opacity:.25}40%{opacity:1}}
+@media (prefers-reduced-motion:reduce){.typing i{animation:none;opacity:.7}}
+
+.compose{border-top:1px solid var(--line);padding:12px 14px calc(12px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:8px}
+.compose-row{display:flex;gap:8px;align-items:flex-end}
+.compose textarea{flex:1;min-width:0;resize:none;min-height:52px;max-height:160px;border:1px solid var(--line);background:var(--sunk);border-radius:10px;padding:12px 14px;font-family:var(--f-sent);font-size:19px;line-height:1.35}
+.compose textarea:focus{background:var(--surface)}
+.compose-meta{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:12.5px;color:var(--muted)}
+.kr-warn{color:var(--warn);font-weight:600}
+
+/* setup */
+.setup{padding:22px;display:flex;flex-direction:column;gap:22px;overflow-y:auto;flex:1}
+.step{display:flex;flex-direction:column;gap:10px}
+.step h3{font-family:var(--f-display);font-weight:600;font-size:20px;margin:0;display:flex;align-items:center;gap:10px}
+.step h3 .no{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;background:var(--accent);color:var(--accent-ink);font-family:var(--f-mono);font-size:13px;flex:none}
+.step.locked{opacity:.45}
+.step .sub{font-size:13.5px;color:var(--muted);margin:0}
+.topics{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px}
+.topic{border:1px solid var(--line);background:var(--sunk);border-radius:10px;padding:9px 12px;text-align:left;display:flex;flex-direction:column;gap:1px}
+.topic b{font-family:var(--f-sent);font-size:17px;font-weight:500}
+.topic span{font-size:12.5px;color:var(--muted)}
+.topic[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);box-shadow:0 0 0 1px var(--accent)}
+.inline{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.inline input,.inline select{flex:1 1 200px;min-width:0;border:1px solid var(--line);background:var(--sunk);border-radius:10px;padding:9px 14px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;background:var(--surface);padding:3px}
+.seg button{border:0;background:transparent;padding:5px 14px;border-radius:999px;font-weight:500;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--paper)}
+.ko-field{display:flex;flex-direction:column;gap:4px}
+.ko-field textarea{width:100%;min-height:96px;resize:vertical;border:1px solid var(--line);background:var(--sunk);border-radius:10px;padding:12px 14px;font-size:16px;line-height:1.6}
+.ko-field .cnt{font-size:12px;color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
+.err{color:var(--bad);font-size:13.5px}
+.planning{display:flex;align-items:center;gap:12px;color:var(--muted)}
+
+/* bench */
+.bench{display:flex;flex-direction:column;gap:18px}
+.bench .panel{padding:18px;display:flex;flex-direction:column;gap:14px}
+.bench h2{font-family:var(--f-display);font-weight:600;font-size:18px;margin:0}
+.ideas{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.idea{display:grid;grid-template-columns:30px minmax(0,1fr);gap:10px;align-items:start;border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--sunk)}
+.idea .n{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-family:var(--f-mono);font-size:12px;border:1.5px solid var(--line);color:var(--muted);background:var(--surface)}
+.idea.done .n{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.idea.now{border-color:var(--accent);background:var(--surface);box-shadow:0 0 0 1px var(--accent)}
+.idea.now .n{border-color:var(--accent);color:var(--accent)}
+.idea .ko{font-size:15px;font-weight:500}
+.idea .en{font-family:var(--f-sent);font-size:18px;line-height:1.4;margin-top:2px;overflow-wrap:anywhere}
+.idea .wait{font-size:12.5px;color:var(--muted)}
+.ladder{list-style:none;margin:0;padding:0}
+.rung{display:grid;grid-template-columns:34px minmax(0,1fr);gap:12px;padding:9px 0;border-top:1px solid var(--line)}
+.rung:first-child{border-top:0}
+.rung .n{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-family:var(--f-mono);font-size:12px;border:1.5px solid var(--line);color:var(--muted);background:var(--surface)}
+.rung.done .n{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.rung.now .n{border-color:var(--accent);color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.rung .t{font-weight:600;font-size:14px}
+.rung .g{font-size:13px;color:var(--muted)}
+.rung .s{font-family:var(--f-sent);font-size:18px;line-height:1.4;margin-top:2px;overflow-wrap:anywhere}
+.rung .s ins{text-decoration:none;background:var(--mark);color:var(--mark-ink);border-radius:3px;padding:0 2px}
+.kocard{border-radius:10px;background:var(--sunk);padding:14px;display:flex;flex-direction:column;gap:10px}
+.kotext{font-size:17px;line-height:2.1;overflow-wrap:anywhere}
+.kw{display:inline-flex;flex-direction:column;align-items:center;vertical-align:top;line-height:1.35;margin:0 1px;padding:1px 3px;border-radius:6px}
+.kw .k{border-bottom:2px solid var(--line)}
+.kw.s1 .k{background:var(--mark);color:var(--mark-ink);border-bottom-color:transparent;border-radius:4px;padding:0 3px;font-weight:600}
+.kw.tap{cursor:pointer;border:0;background:transparent;font:inherit;color:inherit}
+.kw.tap .k{border-bottom:2px dotted var(--accent)}
+.kw.tap:hover .k{background:var(--accent-soft)}
+.kw .ens{display:flex;gap:3px;flex-wrap:wrap;justify-content:center;margin-top:3px}
+.kw .ens .opt{font-size:15px;padding:0 9px;line-height:1.5}
+.kw .role{font-family:var(--f-mono);font-size:10px;color:var(--muted);letter-spacing:.04em}
+.omit{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px;color:var(--muted)}
+.board{border-top:1px solid var(--line);padding:10px 14px;display:flex;flex-direction:column;gap:8px;max-height:48%;overflow-y:auto;background:var(--paper)}
+.board-head{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.board-ko{font-size:13.5px;color:var(--muted)}
+.chunks{display:flex;flex-wrap:wrap;align-items:stretch;gap:6px}
+.sep{align-self:center;color:var(--muted);font-family:var(--f-mono);font-size:16px}
+.chunk{display:flex;flex-direction:column;gap:4px;border:1px solid var(--line);border-radius:10px;padding:7px 9px;background:var(--surface);min-width:0;flex:0 1 150px}
+.chunk.now{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.chunk.later{background:var(--sunk)}
+.chunk.later .ck,.chunk.later .rl{opacity:.6}
+.chunk .ck{font-weight:600;font-size:15.5px;align-self:flex-start;border-radius:4px;padding:0 4px}
+.chunk.s1 .ck{background:var(--mark);color:var(--mark-ink)}
+.chunk .rl{font-family:var(--f-mono);font-size:10.5px;color:var(--muted);letter-spacing:.03em}
+.chunk input{width:100%;min-width:0;border:1px solid var(--line);border-radius:6px;padding:3px 7px;font-family:var(--f-sent);font-size:16px;background:var(--sunk)}
+.chunk input.warn{border-color:var(--warn);background:var(--warn-soft)}
+.chunk input:disabled{opacity:.5}
+.chunk .ens{display:flex;flex-wrap:wrap;gap:3px}
+.chunk .ens .opt{font-size:14px;padding:0 8px}
+.chunk .peek{border:0;background:transparent;color:var(--accent);font-size:12px;text-decoration:underline dotted;padding:0;align-self:flex-start}
+.bonus{display:flex;flex-direction:column;gap:6px}
+.bonus .bw{display:flex;flex-wrap:wrap;gap:6px 12px}
+.bonus .item{display:inline-flex;gap:5px;align-items:baseline;font-size:13px;color:var(--muted)}
+.legend{display:flex;flex-wrap:wrap;gap:12px;font-size:12px;color:var(--muted)}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-1px;margin-right:4px}
+.helpbox{border:1px dashed var(--line);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+.wordrow{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:baseline;font-size:13.5px}
+.wordrow .ko{color:var(--muted)}
+.pattern{font-family:var(--f-sent);font-size:17px}
+.final{background:var(--sunk);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:8px}
+.final .en{font-family:var(--f-sent);font-size:20px;line-height:1.5;overflow-wrap:anywhere}
+.final .line{display:grid;grid-template-columns:26px minmax(0,1fr);gap:8px;align-items:baseline}
+.final .line b{font-family:var(--f-mono);font-size:13px}
+.final .line.Q b{color:var(--qa)}
+.final .line.A b{color:var(--accent)}
+.lookup form{display:flex;gap:8px}
+.lookup input{flex:1;min-width:0;border:1px solid var(--line);background:var(--sunk);border-radius:999px;padding:7px 14px}
+.lk{display:flex;flex-direction:column;gap:6px}
+.lk .row{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;font-size:13.5px}
+.lk .row .opt{font-size:17px}
+.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.stat{background:var(--sunk);border-radius:8px;padding:8px 10px}
+.stat b{display:block;font-family:var(--f-display);font-size:24px;line-height:1.1;font-variant-numeric:tabular-nums}
+.stat span{font-size:12px;color:var(--muted)}
+.settings{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+.hint{font-size:12.5px;color:var(--muted)}
+.banner{background:var(--warn-soft);border:1px solid var(--warn);border-radius:8px;padding:8px 12px;font-size:13.5px}
+</style>
+</head>
+<body>
+
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>문장 사다리<span class="r">.</span></h1>
+      <p>하고 싶은 말을 우리말로 적으면, 코치는 번역해 주지 않아요. 대신 생각을 작은 덩어리로 나누고 뼈대부터 한 칸씩 영어 문장을 직접 세우도록 도와줍니다.</p>
+    </div>
+    <div class="rule"><span>① 주제</span><span>② 하고 싶은 말 (우리말)</span><span>③ 생각마다 영어로 한 칸씩</span></div>
+  </header>
+
+  <div class="grid">
+    <section class="panel chat" aria-labelledby="h-chat">
+      <div class="chat-head">
+        <h2 id="h-chat">코치와 대화 <span class="topic-tag" id="topicTag" hidden></span></h2>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn sm" id="hintBtn" type="button">힌트 주세요</button>
+          <button class="btn sm" id="restart" type="button">새로 시작</button>
+        </div>
+      </div>
+      <div class="log" id="log" aria-live="polite"></div>
+
+      <div class="setup" id="setup" hidden>
+        <div class="step">
+          <h3><span class="no">1</span>무엇에 대해 쓸까요?</h3>
+          <div class="topics" id="topics"></div>
+          <div class="inline"><input id="topicIn" placeholder="직접 입력: 예) 내가 좋아하는 계절" autocomplete="off" maxlength="40"></div>
+        </div>
+        <div class="step locked" id="step2">
+          <h3><span class="no">2</span>하고 싶은 말을 우리말로 적어요</h3>
+          <p class="sub">번역기에 넣을 문장이 아니라, 내 생각을 그대로 적으면 돼요. 영어 문장은 이다음에 내가 직접 만들어요.</p>
+          <div class="inline"><div class="seg" role="group" aria-label="글 종류" id="modeSeg"></div></div>
+          <div class="ko-field" id="koFree"><label class="label" for="koText">내 생각 (1~4문장)</label><textarea id="koText" maxlength="300" placeholder="예) 나는 세계 여행을 하는 것이 꿈이다. 그래서 매달 용돈을 모으고 있다."></textarea><span class="cnt" id="koCnt">0 / 300</span></div>
+          <div class="ko-field" id="koQA" hidden>
+            <label class="label" for="koQ">묻고 싶은 질문</label><textarea id="koQ" maxlength="120" style="min-height:64px" placeholder="예) 너는 돈이 충분하다면 어느 나라를 여행하고 싶어?"></textarea>
+            <label class="label" for="koA" style="margin-top:8px">그 질문에 대한 내 대답</label><textarea id="koA" maxlength="200" style="min-height:72px" placeholder="예) 나는 스페인에 가고 싶어. 왜냐하면 오래된 건축물을 직접 보고 싶기 때문이야."></textarea>
+          </div>
+          <div class="inline" id="codeRow"><label class="label" for="codeIn">수업 코드</label><input id="codeIn" type="password" autocomplete="off" placeholder="선생님이 알려 준 코드" style="flex:0 1 220px"></div>
+          <div class="inline"><label class="label" for="levelIn">수준</label><select id="levelIn" style="flex:0 1 140px"><option>기초</option><option selected>중급</option><option>심화</option></select></div>
+        </div>
+        <div class="err" id="setupErr" role="alert"></div>
+        <div class="inline"><button class="btn primary" id="startBtn" type="button" disabled>생각 나누고 시작하기</button><span class="planning" id="planning" hidden><span class="typing"><i></i><i></i><i></i></span>코치가 생각을 덩어리로 나누는 중…</span></div>
+      </div>
+
+      <div class="board" id="board" hidden>
+        <div class="board-head"><span class="label">구문 판 · 영어 어순으로 나눈 내 문장</span><span class="hint" id="boardStep"></span></div>
+        <div class="board-ko" id="boardKo"></div>
+        <div class="chunks" id="chunks"></div>
+        <div class="inline"><button class="btn sm primary" id="joinBtn" type="button">구문 합쳐서 입력창에 넣기</button><span class="hint">합친 뒤 관사(a, the)·시제·복수형·문장부호를 다듬어서 보내요</span></div>
+      </div>
+      <form class="compose" id="compose">
+        <div class="compose-row">
+          <textarea id="msg" rows="1" placeholder="Write in English…" spellcheck="false" aria-label="영어 문장 입력"></textarea>
+          <button class="btn primary" id="send" type="submit">보내기</button>
+        </div>
+        <div class="compose-meta"><span id="krNote">Enter 보내기 · Shift+Enter 줄바꿈</span><span id="stageNote"></span></div>
+      </form>
+    </section>
+
+    <aside class="bench">
+      <section class="panel" aria-labelledby="h-ideas">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h2 id="h-ideas">내 생각 → 내 영어</h2><span class="label" id="lvlTag"></span></div>
+        <div class="banner" id="exBanner" hidden>예시입니다. 이어서 써 보거나 ‘새로 시작’으로 내 주제와 생각을 적어 보세요.</div>
+        <ol class="ideas" id="ideas"></ol>
+        <div id="finalBox" hidden><div class="label" style="margin-bottom:6px">내가 완성한 영어 글</div><div class="final" id="final"></div></div>
+      </section>
+
+      <section class="panel" aria-labelledby="h-ladder" id="ladderPanel">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h2 id="h-ladder">지금 생각의 사다리</h2><span class="label" id="unitTag"></span></div>
+        <div class="kocard">
+          <span class="label">내가 쓴 우리말</span>
+          <div class="kotext" id="kotext"></div>
+          <div class="hint" id="patternOut"></div>
+          <div class="bonus" id="bonus"></div>
+          <div><button class="btn sm" id="moreWords" type="button">이 생각에 쓸 단어 더 받기</button></div>
+        </div>
+        <ol class="ladder" id="ladder"></ol>
+      </section>
+
+      <section class="panel lookup" aria-labelledby="h-lookup">
+        <h2 id="h-lookup">단어 찾기</h2>
+        <div class="hint">문장이 아니라 <b>단어 하나</b>만 우리말로 찾을 수 있어요. 누르면 입력창에 들어가요.</div>
+        <form id="lkForm"><input id="lkIn" maxlength="10" placeholder="예: 저축하다" autocomplete="off"><button class="btn" type="submit">찾기</button></form>
+        <div class="lk" id="lkOut"></div>
+      </section>
+
+      <section class="panel" aria-labelledby="h-rec">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h2 id="h-rec">학습 기록</h2><button class="btn sm" id="copyLog" type="button">기록 복사</button></div>
+        <div class="stats" id="stats"></div>
+        <label class="settings"><input type="checkbox" id="allowPaste"> 영어 입력창에 긴 붙여넣기 허용 (교사용)</label>
+        <textarea id="copyFallback" hidden readonly style="width:100%;min-height:160px;font-size:12px;border:1px solid var(--line);border-radius:8px;background:var(--sunk);padding:8px"></textarea>
+      </section>
+    </aside>
+  </div>
+</div>
+
+<script>
+(function(){
+const STEPS=[{t:"뼈대",g:"누가 + 어떻게 한다(이다)만 영어로"},{t:"살 붙이기",g:"무엇을·어떤지 채워 핵심 뜻 완성"},{t:"의미 완성",g:"남은 뜻(때·곳·이유·정도)을 더해 생각 전체 담기"}];
+const LEVEL_AI={"기초":"beginner (CEFR A2): keep steps small, accept simple structures.","중급":"intermediate (CEFR B1): expect correct articles, prepositions and verb forms.","심화":"advanced (CEFR B2): expect precise, natural word choice."};
+const TOPICS=[["Travel","여행"],["My dream job","꿈의 직업"],["School life","학교생활"],["Smartphones","스마트폰"],["Climate change","기후 변화"],["Friendship","우정"],["K-culture","한국 문화"],["AI in school","학교 속 AI"]];
+const KIND={S:"",Q:"질문",A:"대답"};
+
+function unitStartUI(u,i,n){const q=u.kind==="Q";const seq=(u.words||[]).map(w=>w.ko).join(" / ");
+  return{unit:true,idx:i,reply_ko:`이 생각을 통째로 번역하지 않고, <b>영어 어순</b>에 맞춰 구문으로 나눴어요: <b>${seq}</b>. 아래 구문 판에서 먼저 노란 칸(누가 / 어떻게) 구문을 영어로 채워 보세요. 동사는 기본형으로 주니 시제와 모양은 직접 바꿔요.${q?" 질문이니까 의문문 어순과 물음표를 잊지 마세요.":""}`,
+  frame:"",issues:[],word_options:[]}}
+
+const EX_UNITS=[
+ {ko:"나는 세계 여행을 하는 것이 꿈이다.",kind:"S",who_ko:"나",action_ko:"꿈꾸다",extra_ko:["여행하는 것을","세계 곳곳을"],words:[{ko:"나는",role:"주어",step:1,en:["I"]},{ko:"꿈꾼다",role:"동사",step:1,en:["dream","wish"]},{ko:"여행하는 것을",role:"목적어",step:2,en:["travel","traveling"]},{ko:"세계 곳곳을",role:"장소",step:3,en:["around","the world"]}],pattern:"dream of + ___ing",extra:[{en:"abroad",ko:"해외로"},{en:"someday",ko:"언젠가"},{en:"countries",ko:"나라들"}],steps:["I dream.","I dream of traveling."],done:"I dream of traveling around the world.",revealed:[],chunkIn:["I","dream","of traveling","around the world"]},
+ {ko:"그래서 매달 용돈을 모으고 있다.",kind:"S",who_ko:"나 (생략됨)",action_ko:"모으고 있다",extra_ko:["용돈을","매달, 그래서"],words:[{ko:"그래서",role:"연결어",step:3,en:["so","therefore"]},{ko:"(나는)",role:"주어",step:1,en:["I"]},{ko:"모으고 있다",role:"동사",step:1,en:["save","collect","put aside"]},{ko:"용돈을",role:"목적어",step:2,en:["allowance","pocket money"]},{ko:"매달",role:"때",step:3,en:["every month","monthly"]}],pattern:"be + ___ing (진행형)",
+  extra:[{en:"carefully",ko:"신중하게"},{en:"little by little",ko:"조금씩"},{en:"trip",ko:"여행"},{en:"budget",ko:"예산"},{en:"spend",ko:"쓰다"},{en:"enough",ko:"충분한"}],steps:[],done:"",revealed:[],chunkIn:[]}
+];
+const EXAMPLE={example:true,topic:"Travel",mode:"free",koText:"나는 세계 여행을 하는 것이 꿈이다. 그래서 매달 용돈을 모으고 있다.",level:"중급",units:EX_UNITS,u:1,step:1,hints:0,blocked:1,lookups:0,wordViews:1,sends:3,stageHints:0,
+ turns:[
+  {role:"assistant",ui:unitStartUI(EX_UNITS[0],0,2)},
+  {role:"user",text:"I dream.",u:0},
+  {role:"assistant",ui:{accepted:true,reply_ko:"좋아요! 주어 I와 동사 dream으로 뼈대가 섰어요. 이제 무엇을 꿈꾸는지 붙여 봐요. dream 뒤에 전치사를 쓰면 꿈의 내용을 이어 말할 수 있어요.",issues:[],frame:"I dream of ___ .",word_options:[]}},
+  {role:"guard",text:"나는 세계를 여행하는 꿈을 꾼다",u:0},
+  {role:"user",text:"I dream of traveling.",u:0},
+  {role:"assistant",ui:{accepted:true,reply_ko:"정확해요! 전치사 of 뒤에 traveling을 썼어요. 마지막으로 ‘세계를, 곳곳을’이라는 뜻을 더하면 이 생각이 완성돼요.",issues:[],frame:"",word_options:[]}},
+  {role:"user",text:"I dream of traveling around the world.",u:0},
+  {role:"assistant",ui:{accepted:true,complete:true,reply_ko:"첫 번째 생각을 완성했어요! dream of traveling around the world는 ‘세계 여행이 꿈이다’를 영어답게 표현한 문장이에요.",issues:[],frame:"",word_options:[]}},
+  {role:"assistant",ui:unitStartUI(EX_UNITS[1],1,2)}
+ ]};
+
+const $=id=>document.getElementById(id);
+let S=load()||JSON.parse(JSON.stringify(EXAMPLE));
+let sample=null,busy=false,ctl=null,planning=false,wordsOpen=false;
+let draft={topic:"",mode:"free"};
+function load(){try{const s=localStorage.getItem("ladder-v6");return s?JSON.parse(s):null}catch(e){return null}}
+function save(){try{localStorage.setItem("ladder-v6",JSON.stringify(S))}catch(e){}}
+function el(tag,attrs,...kids){const n=document.createElement(tag);if(attrs)for(const k in attrs){if(k==="class")n.className=attrs[k];else n.setAttribute(k,attrs[k])}for(const c of kids){if(c==null||c===false)continue;n.append(c.nodeType?c:document.createTextNode(String(c)))}return n}
+function rich(s){const f=document.createDocumentFragment();String(s).split(/(<b>.*?<\/b>)/).forEach(p=>{const m=p.match(/^<b>(.*)<\/b>$/);f.append(m?el("b",null,m[1]):p)});return f}
+const building=()=>S.units&&S.units.length>0;
+const cur=()=>S.units[S.u];
+const allDone=()=>building()&&S.u>=S.units.length;
+
+/* guards */
+function krInfo(t){const h=(t.match(/[가-힣ㄱ-ㆎ]/g)||[]).length,l=(t.match(/[A-Za-z]/g)||[]).length,w=(t.match(/[가-힣ㄱ-ㆎ]+/g)||[]).length;return{h,l,w,block:h>0&&(w>2||h>Math.max(4,l*0.4))}}
+
+/* render */
+function render(){renderLog();renderSetup();renderBench();renderCompose()}
+function renderLog(){const log=$("log");log.hidden=!building();log.innerHTML="";if(!building())return;
+  S.turns.forEach(tn=>{
+    if(tn.role==="user")log.append(el("div",{class:"msg me"},el("div",{class:"who"},"나"),el("div",{class:"bubble"+(tn.hint?" hintreq":"")},tn.hint?"💡 힌트 주세요":tn.text)));
+    else if(tn.role==="guard")log.append(el("div",{class:"msg bot guard"},el("div",{class:"who"},"코치"),el("div",{class:"bubble"},tn.paste?"긴 글은 붙여넣을 수 없어요. 번역기에서 가져온 문장 대신, 지금 아는 단어로 직접 써 봐요. 짧아도 괜찮아요!":"우리말 문장은 이미 받았어요. 이제는 영어로 할 수 있는 만큼만 써 보세요. 막히는 단어는 ‘단어 도움’이나 ‘단어 찾기’를 써요.")));
+    else log.append(botMsg(tn.ui));
+  });
+  if(busy)log.append(el("div",{class:"msg bot"},el("div",{class:"who"},"코치"),el("div",{class:"bubble"},el("div",{class:"typing","aria-label":"코치가 답을 쓰는 중"},el("i"),el("i"),el("i")))));
+  if(S.err)log.append(el("div",{class:"err",role:"alert"},S.err));
+  requestAnimationFrame(()=>{log.scrollTop=log.scrollHeight});
+}
+function botMsg(u){const b=el("div",{class:"bubble"});let who=el("div",{class:"who"},"코치");
+  if(u.unit){const un=S.units[u.idx];const k=KIND[un.kind];who=el("div",{class:"who"},"코치",el("span",{class:"kind "+un.kind},`생각 ${u.idx+1}/${S.units.length}${k?" · "+k:""}`));b.append(el("div",{class:"unit-ko"},`“${un.ko}”`))}
+  if(u.done){b.append(el("div",{class:"ok-badge"},"모든 생각 완성"))}
+  else if(u.complete)b.append(el("div",{class:"ok-badge"},"✓ 이 생각 완성"));
+  else if(u.accepted)b.append(el("div",{class:"ok-badge"},"✓ 다음 칸으로"));
+  b.append(el("div",null,rich(u.reply_ko||"")));
+  if(u.issues&&u.issues.length){const ul=el("ul",{class:"issues"});u.issues.forEach(i=>ul.append(el("li",null,el("span",{class:"frag"},i.part),i.hint_ko)));b.append(ul)}
+  if(u.frame)b.append(el("div",{class:"frame"},el("span",{class:"label"},"문장 틀"),u.frame));
+  if(u.word_options&&u.word_options.length){const o=el("div",{class:"opts"});u.word_options.forEach(w=>{const x=el("button",{class:"opt",type:"button",title:"입력창에 넣기"},w);x.onclick=()=>insertWord(w);o.append(x)});b.append(o)}
+  return el("div",{class:"msg bot"+(u.unit?" unit":"")},who,b)}
+function tok(s){return s.match(/[A-Za-z0-9'’-]+|[^\sA-Za-z0-9'’-]/g)||[]}
+function growth(prev,curS){const f=document.createDocumentFragment();const A=new Set(tok(prev||"").map(x=>x.toLowerCase()));
+  tok(curS).forEach((t,i)=>{if(i>0&&!/^[?.!,;:]$/.test(t))f.append(" ");f.append(prev&&!A.has(t.toLowerCase())?el("ins",null,t):t)});return f}
+
+function renderBench(){
+  $("exBanner").hidden=!S.example;
+  const tt=$("topicTag");tt.hidden=!S.topic;tt.textContent=S.topic?`주제 · ${S.topic}`:"";
+  $("lvlTag").textContent=building()?`수준 ${S.level}`:"";
+  const ideas=$("ideas");ideas.innerHTML="";
+  if(!building()){ideas.append(el("li",{class:"hint"},"주제와 하고 싶은 말을 적으면, 코치가 생각을 1~4개의 덩어리로 나눠 이곳에 보여 줘요."))}
+  (S.units||[]).forEach((u,i)=>{const st=u.done?"done":(i===S.u?"now":"");const k=KIND[u.kind];
+    ideas.append(el("li",{class:"idea "+st},el("span",{class:"n"},u.done?"✓":i+1),el("div",null,el("div",{class:"ko"},(k?`[${k}] `:"")+u.ko),u.done?el("div",{class:"en"},u.done):el("div",{class:"wait"},i===S.u?`${S.step}칸째 쌓는 중`:"대기"))))});
+  const fin=$("final");fin.innerHTML="";const doneUnits=(S.units||[]).filter(u=>u.done);
+  $("finalBox").hidden=!doneUnits.length;
+  if(S.mode==="qa"){const q=doneUnits.filter(u=>u.kind==="Q").map(u=>u.done).join(" "),a=doneUnits.filter(u=>u.kind!=="Q").map(u=>u.done).join(" ");
+    if(q)fin.append(el("div",{class:"line Q"},el("b",null,"Q"),el("span",{class:"en"},q)));if(a)fin.append(el("div",{class:"line A"},el("b",null,"A"),el("span",{class:"en"},a)))}
+  else fin.append(el("div",{class:"en"},doneUnits.map(u=>u.done).join(" ")));
+  // ladder
+  const lp=$("ladderPanel");lp.hidden=!building()||allDone();
+  if(building()&&!allDone()){const u=cur();$("unitTag").textContent=`생각 ${S.u+1}/${S.units.length}`;
+    const lad=$("ladder");lad.innerHTML="";const ex=u.extra_ko||[];
+    const goals=[`누가: ${u.who_ko||"?"} · 어떻게: ${u.action_ko||"?"}`,`더할 뜻: ${ex[0]||"무엇을·어떤지"}`,`남은 뜻: ${ex.slice(1).join(", ")||"빠진 뜻이 없는지 확인"}`];
+    STEPS.forEach((s,i)=>{const n=i+1,acc=(u.steps||[])[i];const cls=acc?"done":(S.step===n?"now":"");
+      lad.append(el("li",{class:"rung "+cls},el("span",{class:"n"},acc?"✓":n),el("div",null,el("div",{class:"t"},s.t),el("div",{class:"g"},goals[i]),acc?el("div",{class:"s"},growth(i?(u.steps||[])[i-1]:"",acc)):null)))});
+    renderWords()}
+  const st=$("stats");st.innerHTML="";const nd=(S.units||[]).filter(u=>u.done).length;
+  [[`${nd}/${(S.units||[]).length||0}`,"완성한 생각"],[S.hints+(S.wordViews||0),"힌트·단어 도움"],[S.blocked,"우리말·붙여넣기 차단"]].forEach(([v,l])=>st.append(el("div",{class:"stat"},el("b",null,v),el("span",null,l))));
+}
+const ROLE={subject:"누가",verb:"어떻게"};
+function enChips(w){const box=el("span",{class:"ens"});(w.en||[]).forEach(e=>{const b=el("button",{class:"opt",type:"button",title:"입력창에 넣기"},e);b.onclick=ev=>{ev.stopPropagation();insertWord(e)};box.append(b)});return box}
+function renderWords(){const u=cur();$("kotext").textContent=u.ko;renderBoard();
+  $("patternOut").textContent=u.pattern&&S.step>1?`써 볼 만한 구조: ${u.pattern}`:"";
+  const bn=$("bonus");bn.innerHTML="";const extra=u.extra||[];
+  if(extra.length){bn.append(el("span",{class:"label"},"더 풍부하게 쓸 단어"));const row=el("div",{class:"bw"});
+    extra.forEach(w=>{const b=el("button",{class:"opt",type:"button",title:"입력창에 넣기"},w.en);b.onclick=()=>insertWord(w.en);row.append(el("span",{class:"item"},b,w.ko))});bn.append(row)}
+  $("moreWords").disabled=!sample||moreBusy;
+}
+let moreBusy=false;
+function renderBoard(){const bd=$("board");const on=building()&&!allDone();bd.hidden=!on;if(!on)return;
+  const u=cur();u.chunkIn=u.chunkIn||[];u.revealed=u.revealed||[];
+  $("boardKo").textContent=`우리말: ${u.ko}`;$("boardStep").textContent=`${S.step}칸 ${STEPS[S.step-1].t} · 테두리 칸을 채워요`;
+  const box=$("chunks");box.innerHTML="";
+  (u.words||[]).forEach((w,i)=>{if(i>0)box.append(el("span",{class:"sep","aria-hidden":"true"},"/"));
+    const now=w.step===S.step,later=w.step>S.step,open=!later||u.revealed.includes(i);
+    const inp=el("input",{type:"text",id:`chunk-${S.u}-${i}`,"aria-label":`${w.ko} 영어로`,placeholder:"English",autocomplete:"off",spellcheck:"false"});
+    inp.value=u.chunkIn[i]||"";if(/[\uAC00-\uD7A3]/.test(inp.value))inp.classList.add("warn");
+    inp.addEventListener("input",()=>{u.chunkIn[i]=inp.value;inp.classList.toggle("warn",/[\uAC00-\uD7A3]/.test(inp.value));save()});
+    const card=el("div",{class:"chunk"+(now?" now":"")+(later?" later":"")+(w.step===1?" s1":"")},el("span",{class:"ck"},w.ko),el("span",{class:"rl"},`${w.role||"구문"}${later?" · 다음 칸":""}`),inp);
+    if(open){const ens=el("span",{class:"ens"});(w.en||[]).forEach(e=>{const b=el("button",{class:"opt",type:"button",title:"이 칸에 넣기"},e);b.onclick=()=>{const cur=inp.value.trim();inp.value=cur&&!cur.toLowerCase().split(/\s+/).includes(e.toLowerCase())?cur+" "+e:e;u.chunkIn[i]=inp.value;save();inp.focus()};ens.append(b)});card.append(ens)}
+    else{const pk=el("button",{class:"peek",type:"button"},"단어 미리 보기");pk.onclick=()=>{u.revealed.push(i);if(!S.example)S.wordViews=(S.wordViews||0)+1;save();renderBoard()};card.append(pk)}
+    box.append(card)});
+}
+$("joinBtn").onclick=()=>{const u=cur();if(!u)return;const parts=(u.words||[]).map((w,i)=>w.step<=S.step?(u.chunkIn?.[i]||"").trim():"").filter(Boolean);
+  if(!parts.length){$("boardStep").textContent="먼저 테두리 칸에 영어를 채워 주세요.";return}
+  let t=parts.join(" ").replace(/\s+([,.?!])/g,"$1");t=t.charAt(0).toUpperCase()+t.slice(1);if(!/[.?!]$/.test(t))t+=u.kind==="Q"?"?":".";
+  msg.value=t;msg.style.height="auto";msg.style.height=Math.min(msg.scrollHeight,160)+"px";msg.focus();msg.setSelectionRange(t.length,t.length);krLive()};
+$("moreWords").onclick=async()=>{const u=cur();if(!u||!sample)return;moreBusy=true;const b=$("moreWords");b.textContent="고르는 중…";renderBench();
+  const have=[...(u.words||[]).flatMap(w=>w.en),...(u.extra||[]).map(w=>w.en)];
+  try{const r=await sample.json(`A Korean high school student is writing ONE English sentence for this idea: "${u.ko}" (topic: ${S.topic}). Level: ${LEVEL_AI[S.level]}
+Give 8 MORE useful English words or 2-word chunks they could use to express or enrich this idea: synonyms of the key words, adjectives, adverbs, time/place expressions, connectors. Avoid these already shown: ${have.join(", ")}.
+Never give a phrase longer than 2 words or anything that reveals a full sentence. Reply with only a JSON array like [{"en":"regularly","ko":"꾸준히"}].`,{modelTier:"quick",cache:false});
+    const add=(Array.isArray(r)?r:[]).filter(x=>x&&x.en&&String(x.en).split(/\s+/).length<=3).map(x=>({en:String(x.en),ko:String(x.ko||"")})).filter(x=>!have.map(h=>h.toLowerCase()).includes(x.en.toLowerCase())).slice(0,8);
+    u.extra=[...(u.extra||[]),...add].slice(0,20);if(!S.example)S.wordViews=(S.wordViews||0)+1;save();
+  }catch(e){S.err=ERR[e?.code]||"단어를 받지 못했어요. 다시 눌러 주세요.";renderLog()}
+  moreBusy=false;b.textContent="이 생각에 쓸 단어 더 받기";renderBench()};
+
+function renderSetup(){const need=!building();$("setup").hidden=!need;if(!need)return;
+  const box=$("topics");box.innerHTML="";
+  TOPICS.forEach(([en,ko])=>{const b=el("button",{class:"topic",type:"button","aria-pressed":String(draft.topic===en)},el("b",null,en),el("span",null,ko));b.onclick=()=>{draft.topic=en;$("topicIn").value="";renderSetup();(draft.mode==="qa"?$("koQ"):$("koText")).focus()};box.append(b)});
+  const seg=$("modeSeg");seg.innerHTML="";[["free","자유 글"],["qa","질문과 대답"]].forEach(([k,l])=>{const b=el("button",{type:"button","aria-pressed":String(draft.mode===k)},l);b.onclick=()=>{draft.mode=k;renderSetup()};seg.append(b)});
+  $("koFree").hidden=draft.mode!=="free";$("koQA").hidden=draft.mode!=="qa";
+  const has=!!draft.topic;$("step2").classList.toggle("locked",!has);
+  ["koText","koQ","koA","levelIn"].forEach(id=>$(id).disabled=!has||planning);
+  $("startBtn").disabled=!has||planning;$("planning").hidden=!planning;
+}
+function renderCompose(){const show=building();$("compose").hidden=!show;const done=allDone();
+  $("hintBtn").disabled=!show||busy||done;$("send").disabled=busy||done;$("msg").disabled=done;
+  $("stageNote").textContent=!show?"":done?"모든 생각 완성!":`생각 ${S.u+1} · ${S.step}칸 ${STEPS[S.step-1].t}`;
+  $("msg").placeholder=done?"완성했어요! ‘새로 시작’으로 다른 생각을 써 보세요.":(cur()?.kind==="Q"?"Write your question in English…":"Write in English…");
+  krLive()}
+function krLive(){const k=krInfo($("msg").value);const n=$("krNote");
+  if(k.block){n.textContent="우리말이 너무 많아요. 영어로 바꿔 써 보세요.";n.className="kr-warn"}
+  else if(k.h){n.textContent="우리말 단어가 섞였어요. 코치가 영어 단어를 제안해 줄 거예요.";n.className="kr-warn"}
+  else{n.textContent="Enter 보내기 · Shift+Enter 줄바꿈";n.className=""}}
+
+/* compose */
+const msg=$("msg");
+msg.addEventListener("input",()=>{msg.style.height="auto";msg.style.height=Math.min(msg.scrollHeight,160)+"px";krLive()});
+msg.addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey&&!e.isComposing){e.preventDefault();$("compose").requestSubmit()}});
+msg.addEventListener("paste",e=>{if($("allowPaste").checked)return;const t=(e.clipboardData||window.clipboardData)?.getData("text")||"";
+  if(t.trim().length>15){e.preventDefault();S.example=false;S.blocked++;S.turns.push({role:"guard",paste:true});save();render()}});
+function insertWord(w){const v=msg.value;const p=msg.selectionStart??v.length;const pre=v.slice(0,p),post=v.slice(p);
+  const sp=pre&&!/\s$/.test(pre)?" ":"";msg.value=pre+sp+w+(post&&!/^\s/.test(post)?" ":"")+post;msg.focus();const c=(pre+sp+w).length;msg.setSelectionRange(c,c);krLive()}
+$("compose").addEventListener("submit",e=>{e.preventDefault();const t=msg.value.trim();if(!t||busy||allDone())return;
+  const k=krInfo(t);if(k.block){S.example=false;S.blocked++;S.turns.push({role:"guard",text:t});msg.value="";save();render();return}
+  send({text:t})});
+$("hintBtn").onclick=()=>{if(busy)return;S.hints++;send({hint:true})};
+
+/* AI: coach */
+const ERR={bad_code:"수업 코드가 맞지 않아요. 선생님께 받은 코드를 다시 입력해 주세요.",not_granted:"AI 사용이 허용되지 않았어요. 페이지 권한에서 허용하면 코치가 답할 수 있어요.",sampling_disabled:"이 계정에서는 AI 코치를 쓸 수 없어요.",rate_limited:"요청이 많아요. 잠시 후 다시 보내 주세요.",session_expired:"다시 로그인한 뒤 보내 주세요.",refused:"이 내용에는 답할 수 없어요. 내용을 바꿔 보세요.",invalid_json:"코치 답을 읽지 못했어요. 다시 보내 주세요."};
+function rules(){return `You are "Coach", an English writing tutor for Korean high school students. The class problem: students write Korean and machine-translate it. Here the student has written what they want to say in Korean, and you must help them BUILD the English themselves, one idea unit at a time, in three steps. You must NEVER give the English translation of an idea unit, never write the finished sentence, and never translate a Korean phrase longer than one word.
+Topic: "${S.topic}". Level: ${LEVEL_AI[S.level]}
+The student sees their Korean idea split into chunks in English word order, with English word options; they fill each chunk and join them. Focus feedback on what joining chunks does not fix: verb tense and agreement, articles, plurals, prepositions, word forms (e.g. -ing after a preposition), and natural word order.
+Steps for each idea unit:
+1 뼈대: a grammatical English clause with an appropriate subject and main verb for the idea (can be very short).
+2 살 붙이기: add the object/complement so the core meaning is there.
+3 의미 완성: add the remaining details (time, place, reason, degree, connectors) so the sentence expresses the WHOLE idea naturally.
+If the unit kind is Q the sentence must be a well-formed question; if A it must answer the question.
+Judging:
+- "accepted": grammatical and meets the CURRENT step goal. Accept the student's own wording.
+- "complete": grammatical AND already conveys the whole meaning of the Korean idea unit (meaning, not word-for-word; natural English is better than literal). complete implies accepted. A student may finish early.
+- If not accepted, point to exact fragments with hints that let them fix it themselves (name the grammar point, ask a guiding question). At most 3 issues.
+- Meaning check: if the English drifts from the Korean intent, ask a guiding question in Korean about the missing or wrong meaning instead of giving the words.
+- If the student mixes in a Korean word, praise the attempt and give 2-3 English candidate words in "word_options" (single words or 2-word chunks).
+- On [HINT], escalate by hints used in this step: 1st = a guiding question about structure or meaning; 2nd = a sentence frame with ___ blanks; 3rd+ = also 2-4 word or chunk options. Never the whole sentence.
+- reply_ko: 2-4 short, warm Korean sentences; keep English words in English. When accepted but not complete, say what was good and what meaning to add next. When complete, celebrate and briefly say why it is a natural English expression.
+Reply with only one JSON object:
+{"accepted":false,"complete":false,"reply_ko":"...","issues":[{"part":"<verbatim fragment>","hint_ko":"..."}],"frame":"<English frame with ___ or empty>","word_options":["..."]}`}
+function ctx(extra){const u=cur();const steps=(u.steps||[]).map((s,i)=>`step ${i+1}: "${s}"`).join("; ")||"none";
+  return `[Idea unit ${S.u+1}/${S.units.length}, kind ${u.kind}] Korean idea: "${u.ko}"\n[Hints the student already sees: who=${u.who_ko}; action=${u.action_ko}; extra=${(u.extra_ko||[]).join(", ")}; chunk plan in English order: ${(u.words||[]).map((w,i)=>`${w.ko}[${w.role},step${w.step}]=${(u.chunkIn||[])[i]||'_'}`).join(' / ')}; words already shown: ${(u.words||[]).filter((w,i)=>w.step<=S.step||(u.revealed||[]).includes(i)).map(w=>w.ko+"="+w.en.join("/")).join(", ")||"none"}; bonus words shown: ${(u.extra||[]).map(w=>w.en).join(", ")||"none"}]\n[Current step: ${S.step} ${STEPS[S.step-1].t}] [Accepted in this unit: ${steps}] [Hints used in this step: ${S.stageHints||0}]\n${extra}`}
+function history(){const out=[];S.turns.filter(t=>t.u===S.u||t.role==="assistant"&&t.u===S.u).slice(-12).forEach(t=>{
+  if(t.role==="user")out.push({role:"user",content:t.ctx||t.text||"[HINT]"});
+  else if(t.role==="assistant"&&!t.ui.unit)out.push({role:"assistant",content:JSON.stringify({accepted:!!t.ui.accepted,complete:!!t.ui.complete,reply_ko:String(t.ui.reply_ko||"").replace(/<\/?b>/g,""),issues:t.ui.issues||[],frame:t.ui.frame||"",word_options:t.ui.word_options||[]})});});
+  while(out.length&&out[0].role==="assistant")out.shift();return out}
+function norm(r){const o=r&&typeof r==="object"?r:{};return{accepted:!!o.accepted||!!o.complete,complete:!!o.complete,reply_ko:String(o.reply_ko||"다시 한 번 써 볼까요?").replace(/[<>]/g,""),
+  issues:Array.isArray(o.issues)?o.issues.filter(i=>i&&i.part).slice(0,3).map(i=>({part:String(i.part),hint_ko:String(i.hint_ko||"")})):[],
+  frame:String(o.frame||""),word_options:Array.isArray(o.word_options)?o.word_options.map(String).slice(0,4):[]}}
+
+async function send({text,hint}){
+  if(!sample){S.err="AI 코치는 Claude 앱이나 claude.ai에서 이 페이지를 열었을 때 대답해요.";renderLog();return}
+  S.example=false;const ui=S.u;
+  const content=hint?ctx("[HINT] The student asks for a hint for the current step."):ctx(`Student English: """${text}"""`);
+  S.turns.push(hint?{role:"user",hint:true,ctx:content,u:ui}:{role:"user",text,ctx:content,u:ui});
+  if(hint)S.stageHints=(S.stageHints||0)+1;else S.sends++;
+  S.err="";msg.value="";msg.style.height="auto";busy=true;save();render();
+  ctl=new AbortController();
+  try{const r=await sample.json([{role:"user",content:rules()},...history()],{cache:false,signal:ctl.signal});
+    const u=norm(r);const unit=cur();unit.steps=unit.steps||[];
+    if(hint||!text){u.accepted=false;u.complete=false}
+    if(u.accepted){unit.steps[S.step-1]=text;S.stageHints=0;
+      if(u.complete||S.step>=3){u.complete=true;unit.done=text;S.turns.push({role:"assistant",ui:u,u:ui});advanceUnit()}
+      else{S.step++;S.turns.push({role:"assistant",ui:u,u:ui})}}
+    else S.turns.push({role:"assistant",ui:u,u:ui});
+  }catch(e){if(e?.code!=="cancelled")S.err=ERR[e?.code]||"연결이 끊겼어요. 다시 보내 주세요."}
+  busy=false;save();render();if(!allDone())msg.focus()}
+function advanceUnit(){S.u++;S.step=1;S.stageHints=0;wordsOpen=false;
+  if(S.u<S.units.length)S.turns.push({role:"assistant",ui:unitStartUI(S.units[S.u],S.u,S.units.length),u:S.u});
+  else S.turns.push({role:"assistant",ui:{done:true,reply_ko:"모든 생각을 내 힘으로 영어로 바꿨어요! 오른쪽에서 완성한 글을 우리말 생각과 나란히 비교해 보세요. 번역기 없이 해낸 문장이에요.",issues:[],frame:"",word_options:[]},u:S.u})}
+
+/* AI: plan */
+$("restart").onclick=()=>{if(busy)ctl?.abort();S={example:false,topic:"",mode:"free",koText:"",level:S.level||"중급",units:[],u:0,step:1,hints:0,blocked:0,lookups:0,wordViews:0,sends:0,stageHints:0,turns:[]};draft={topic:"",mode:"free"};["koText","koQ","koA","topicIn"].forEach(id=>$(id).value="");$("koCnt").textContent="0 / 300";$("setupErr").textContent="";save();render()};
+$("topicIn").addEventListener("input",e=>{draft.topic=e.target.value.trim();renderSetup()});
+$("koText").addEventListener("input",e=>{$("koCnt").textContent=`${e.target.value.length} / 300`});
+$("startBtn").onclick=async()=>{const err=$("setupErr");err.textContent="";
+  if(!draft.topic){err.textContent="먼저 주제를 골라 주세요.";return}
+  let ko,qa=draft.mode==="qa";
+  if(qa){const q=$("koQ").value.trim(),a=$("koA").value.trim();if(!q||!a){err.textContent="질문과 대답을 모두 우리말로 적어 주세요.";return}ko=`[질문] ${q}\n[대답] ${a}`}
+  else{ko=$("koText").value.trim();if(ko.length<5){err.textContent="하고 싶은 말을 한 문장 이상 적어 주세요.";return}}
+  if(!/[가-힣]/.test(ko)){err.textContent="이 칸에는 내 생각을 우리말로 적어요. 영어는 다음 단계에서 직접 만들어요.";return}
+  if(!sample){err.textContent="AI 코치는 Claude 앱이나 claude.ai에서 이 페이지를 열었을 때 작동해요.";return}
+  planning=true;renderSetup();
+  try{const r=await sample.json(`A Korean high school student wants to express the following in English. Topic: "${draft.topic}". Type: ${qa?"a question and the student's own answer":"free writing"}. Level: ${LEVEL_AI[$("levelIn").value]}
+Do NOT translate it. Break it into idea units that the student will build one English sentence at a time.
+Korean text:
+"""${ko}"""
+Reply with only JSON:
+{"units":[{"ko":"<the idea unit in the student's Korean>","kind":"S","who_ko":"<주어 힌트, Korean, e.g. 나>","action_ko":"<핵심 동작·상태, Korean, e.g. 꿈꾸다>","extra_ko":["<더할 의미 조각, Korean>"],"words":[{"ko":"<Korean chunk>","role":"<역할>","step":1,"en":["<English option>"]}],"pattern":"<grammar pattern with blanks or empty>","extra":[{"en":"<English>","ko":"<짧은 뜻>"}]}],"note_ko":""}
+Rules:
+- 1-4 units; one unit = one English sentence. Split long sentences, merge tiny fragments. If there are more than 4 ideas, keep the 4 most important and explain in note_ko.
+- kind: ${qa?'"Q" for units from [질문], "A" for units from [대답]':'"S"'}.
+- who_ko/action_ko/extra_ko are Korean only. If the Korean subject is omitted, infer it (e.g. 나).
+- words: the unit split into CHUNKS (구문) arranged in ENGLISH WORD ORDER, e.g. "사람은 다양한 음식을 먹는다" -> 사람은 / 먹는다 / 다양한 / 음식을. Each chunk: {"ko":"<the Korean chunk, taken from the student's text; you may lightly adapt endings so it reads naturally alone>","role":"<Korean role label: 주어, 동사, 조동사, 의문사, 목적어, 보어, 꾸밈말, 때, 장소, 방법, 이유, 연결어>","step":1|2|3,"en":["<2-3 English options>"]}.
+  - Order chunks exactly as they would appear in a natural English sentence (connectors like 그래서 first; for questions put 의문사 and 조동사 chunks first, using "(질문 표시)" as ko for an inserted do/does/can).
+  - ALWAYS include one 주어 and one 동사 chunk with step 1. If the Korean omits the subject, add it as "(나는)" etc. Give verbs in base form so the student changes tense and form.
+  - step 2 = object/complement chunks and their adjectives; step 3 = time, place, manner, reason, connectors.
+  - Usually 3-7 chunks per unit. English options are single words or 2-word chunks only; never give a full phrase that solves grammar for the student (articles, tense, prepositions are their job).
+- extra: 6-8 bonus English words per unit that could enrich the sentence (adjectives, adverbs, synonyms, related topic words), as {"en":"...","ko":"짧은 뜻"}; single words or 2-word chunks only.
+- pattern: a grammar pattern name with blanks such as "dream of + ___ing" or "be + ___ing", never a full sentence.
+- Never include an English translation of any unit.
+- If the text is empty, not meaningful, or inappropriate for school, return {"units":[],"note_ko":"<이유, Korean>"}.`,{cache:false});
+    const units=(Array.isArray(r?.units)?r.units:[]).slice(0,4).filter(u=>u&&u.ko).map(u=>({ko:String(u.ko),kind:["Q","A","S"].includes(u.kind)?u.kind:(qa?"A":"S"),who_ko:String(u.who_ko||""),action_ko:String(u.action_ko||""),
+      extra_ko:Array.isArray(u.extra_ko)?u.extra_ko.map(String).slice(0,4):[],words:(Array.isArray(u.words)?u.words:[]).filter(w=>w&&w.ko).slice(0,9).map(w=>{const st=Number(w.step);return{ko:String(w.ko),role:String(w.role||""),en:(Array.isArray(w.en)?w.en:[w.en]).filter(Boolean).map(String).slice(0,3),step:[1,2,3].includes(st)?st:2}}),pattern:String(u.pattern||""),
+      extra:Array.isArray(u.extra)?u.extra.filter(x=>x&&x.en).slice(0,8).map(x=>({en:String(x.en),ko:String(x.ko||"")})):[],steps:[],done:"",revealed:[],chunkIn:[]}));
+    planning=false;
+    if(!units.length){err.textContent=String(r?.note_ko||"생각을 나누지 못했어요. 문장을 조금 바꿔 다시 시도해 주세요.");renderSetup();return}
+    S={example:false,topic:draft.topic,mode:draft.mode,koText:ko,level:$("levelIn").value,units,u:0,step:1,hints:0,blocked:0,lookups:0,wordViews:0,sends:0,stageHints:0,turns:[]};
+    const note=String(r?.note_ko||"");
+    S.turns.push({role:"assistant",ui:{reply_ko:`네 생각을 <b>${units.length}개</b>의 덩어리로 나눴어요. 우리말 문장을 통째로 번역하지 않고, 덩어리마다 뼈대 → 살 붙이기 → 의미 완성 순서로 직접 영어 문장을 세울 거예요.${note?" "+note:""}`,issues:[],frame:"",word_options:[]},u:0});
+    S.turns.push({role:"assistant",ui:unitStartUI(units[0],0,units.length),u:0});
+    save();render();msg.focus();
+  }catch(e){planning=false;err.textContent=ERR[e?.code]||"생각을 나누지 못했어요. 다시 눌러 주세요.";renderSetup()}};
+
+/* lookup */
+$("lkForm").onsubmit=async e=>{e.preventDefault();const q=$("lkIn").value.trim();const out=$("lkOut");out.innerHTML="";
+  if(!q)return;
+  if(q.split(/\s+/).length>2||(/[.?!다요]$/.test(q)&&q.length>6)){out.append(el("div",{class:"err"},"단어 하나만 찾을 수 있어요. 예: ‘저축하다’, ‘꿈’"));return}
+  if(!sample){out.append(el("div",{class:"err"},"단어 찾기는 Claude 앱이나 claude.ai에서 작동해요."));return}
+  out.append(el("div",{class:"hint"},"찾는 중…"));
+  try{const r=await sample.json(`A Korean high school student needs the English word for the Korean word "${q}". Give 2-3 English words or short chunks (max 3 words each), NOT sentences. For each, add a very short Korean nuance note. Reply with only a JSON array like [{"en":"save","pos":"v.","ko":"돈을 모으다, 아끼다"}].`,{modelTier:"quick"});
+    out.innerHTML="";S.lookups=(S.lookups||0)+1;save();
+    (Array.isArray(r)?r:[]).slice(0,3).forEach(x=>{if(!x||!x.en)return;const b=el("button",{class:"opt",type:"button"},String(x.en));b.onclick=()=>insertWord(String(x.en));out.append(el("div",{class:"row"},b,el("span",{class:"label"},String(x.pos||"")),el("span",null,String(x.ko||""))))});
+    if(!out.children.length)out.append(el("div",{class:"err"},"결과가 없어요. 다른 말로 찾아보세요."));
+  }catch(err){out.innerHTML="";out.append(el("div",{class:"err"},ERR[err?.code]||"찾지 못했어요. 다시 시도해 주세요."))}};
+
+/* copy record */
+$("copyLog").onclick=async()=>{const lines=[`[문장 사다리 학습 기록]`,`주제: ${S.topic||"-"} / 글 종류: ${S.mode==="qa"?"질문과 대답":"자유 글"} / 수준: ${S.level}`,`우리말 생각: ${(S.koText||"-").replace(/\n/g," ")}`,""];
+  (S.units||[]).forEach((u,i)=>{lines.push(`생각 ${i+1}${KIND[u.kind]?" ("+KIND[u.kind]+")":""}: ${u.ko}`);(u.steps||[]).forEach((s,j)=>s&&lines.push(`  ${j+1}칸 ${STEPS[j].t}: ${s}`));lines.push(`  → 완성: ${u.done||"(미완료)"}`)});
+  lines.push("",`완성한 영어 글: ${(S.units||[]).filter(u=>u.done).map(u=>u.done).join(" ")||"-"}`);
+  lines.push(`제출 ${S.sends}회 · 힌트 ${S.hints}회 · 단어 도움 ${S.wordViews||0}회 · 단어 찾기 ${S.lookups||0}회 · 우리말/붙여넣기 차단 ${S.blocked}회`);
+  const txt=lines.join("\n");const b=$("copyLog");
+  try{await navigator.clipboard.writeText(txt);b.textContent="복사됨";setTimeout(()=>b.textContent="기록 복사",1600)}
+  catch(e){const f=$("copyFallback");f.hidden=false;f.value=txt;f.select()}};
+
+
+/* Standalone hosting: inside claude.ai use window.claude; elsewhere call this site's /api/coach */
+function getCode(){try{return localStorage.getItem("ladder-code")||""}catch(e){return ""}}
+function setCode(v){try{localStorage.setItem("ladder-code",v)}catch(e){}}
+$("codeIn").value=getCode();$("codeIn").addEventListener("input",e=>setCode(e.target.value.trim()));
+function parseJSONLoose(t){t=String(t||"").trim();try{return JSON.parse(t)}catch(e){}
+  const f=t.match(/```(?:json)?\s*([\s\S]*?)```/);if(f){try{return JSON.parse(f[1])}catch(e){}}
+  const a=t.search(/[\[{]/),b=Math.max(t.lastIndexOf("}"),t.lastIndexOf("]"));if(a>=0&&b>a){try{return JSON.parse(t.slice(a,b+1))}catch(e){}}
+  throw {code:"invalid_json",message:"no json",text:t}}
+function makeRemoteSample(){
+  async function call(input,opts={}){const messages=typeof input==="string"?[{role:"user",content:input}]:input;
+    let res;try{res=await fetch("/api/coach",{method:"POST",headers:{"Content-Type":"application/json","x-access-code":encodeURIComponent(getCode())},body:JSON.stringify({messages,tier:opts.modelTier||"default"}),signal:opts.signal})}
+    catch(e){if(e&&e.name==="AbortError")throw {code:"cancelled"};throw {code:"upstream_error",message:String(e)}}
+    if(res.status===401)throw {code:"bad_code"};if(res.status===429)throw {code:"rate_limited"};if(res.status===413)throw {code:"prompt_too_large"};
+    if(!res.ok)throw {code:"upstream_error",message:"HTTP "+res.status};
+    const data=await res.json();return {text:String(data.text||""),truncated:!!data.truncated}}
+  const s=(input,opts)=>call(input,opts);
+  s.json=async(input,opts)=>parseJSONLoose((await call(input,opts)).text);
+  return s}
+render();
+(async()=>{let inClaude=null;try{inClaude=window.claude?.use?await window.claude.use("sample"):null}catch(e){inClaude=null}
+  sample=inClaude||makeRemoteSample();$("codeRow").hidden=!!inClaude;render()})();
+})();
+</script>
+
+</body>
+</html>
